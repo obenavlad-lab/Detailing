@@ -1,152 +1,105 @@
 'use strict';
 
-// Contact details in index.html are demonstrative. This static page does not send data to a server.
-document.body.classList.add('js');
-
+// Mobile navigation
+document.documentElement.classList.add('js');
 const menuButton = document.querySelector('.menu-toggle');
 const navigation = document.querySelector('#navigation');
-const desktop = window.matchMedia('(min-width: 1200px)');
-
-function setMenu(open) {
+function closeMenu() {
+  menuButton.setAttribute('aria-expanded', 'false');
+  menuButton.setAttribute('aria-label', 'Відкрити меню');
+  navigation.classList.remove('is-open');
+}
+menuButton.addEventListener('click', () => {
+  const open = menuButton.getAttribute('aria-expanded') !== 'true';
   menuButton.setAttribute('aria-expanded', String(open));
   menuButton.setAttribute('aria-label', open ? 'Закрити меню' : 'Відкрити меню');
   navigation.classList.toggle('is-open', open);
-  document.body.classList.toggle('menu-open', open);
-}
-
-menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
-navigation.addEventListener('click', event => {
-  if (event.target.closest('a')) setMenu(false);
 });
-desktop.addEventListener('change', () => setMenu(false));
-document.addEventListener('keydown', event => {
-  if (menuButton.getAttribute('aria-expanded') !== 'true') return;
-  if (event.key === 'Escape') {
-    setMenu(false);
+navigation.addEventListener('click', (event) => {
+  if (event.target.closest('a')) closeMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') {
+    closeMenu();
     menuButton.focus();
   }
-  if (event.key === 'Tab') {
-    const items = [menuButton, ...navigation.querySelectorAll('a')];
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
 });
+window.matchMedia('(min-width: 768px)').addEventListener('change', closeMenu);
 
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-if ('IntersectionObserver' in window && !reducedMotion.matches) {
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add('is-visible');
-      observer.unobserve(entry.target);
+// One-time section reveals; respect motion preferences at any time
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+const revealElements = document.querySelectorAll('.reveal');
+if ('IntersectionObserver' in window && !motionPreference.matches) {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      }
     });
   }, { threshold: 0.08 });
-  document.querySelectorAll('.reveal').forEach(element => {
-    element.classList.add('reveal-pending');
+  revealElements.forEach((element) => {
+    element.classList.add('reveal-ready');
     observer.observe(element);
   });
+  motionPreference.addEventListener('change', () => {
+    if (motionPreference.matches) {
+      observer.disconnect();
+      revealElements.forEach((element) => element.classList.add('is-visible'));
+    }
+  });
+  document.addEventListener('focusin', (event) => {
+    event.target.closest('.reveal-ready')?.classList.add('is-visible');
+  });
 }
 
-document.querySelectorAll('.comparison input').forEach(slider => {
-  slider.addEventListener('input', () => slider.parentElement.style.setProperty('--position', `${slider.value}%`));
+// Service selection
+const serviceSelect = document.querySelector('#service');
+document.querySelectorAll('[data-service]').forEach((link) => {
+  link.addEventListener('click', () => { serviceSelect.value = link.dataset.service; });
 });
 
-const questions = document.querySelectorAll('.faq-list details');
-questions.forEach(question => question.addEventListener('toggle', () => {
-  if (question.open) questions.forEach(other => { if (other !== question) other.open = false; });
-}));
-
-const form = document.querySelector('#booking-form');
-const service = document.querySelector('#service');
-document.querySelectorAll('[data-service]').forEach(link => {
-  link.addEventListener('click', () => {
-    service.value = link.dataset.service;
-    setFieldError(service, '');
-    if (!errorSummary.hidden) showErrors();
-  });
-});
-
-const fields = [...form.querySelectorAll('[required]')];
-const errorSummary = document.querySelector('#form-errors');
-const dialog = document.querySelector('#booking-dialog');
-const draft = document.querySelector('#booking-draft');
-const copyStatus = document.querySelector('#copy-status');
-
-function validate(field) {
+// Accessible demo validation. No backend, storage or simulated submission.
+const form = document.querySelector('.booking-form');
+const status = document.querySelector('#form-status');
+const nameInput = document.querySelector('#name');
+const phoneInput = document.querySelector('#phone');
+function validateField(field) {
   const value = field.value.trim();
-  if (field.id === 'name' && (value.length < 2 || !/\p{L}/u.test(value))) return 'Вкажіть ім’я: щонайменше 2 символи та одну літеру.';
-  if (field.id === 'phone') {
-    const digits = value.replace(/[\s()+-]/g, '');
-    if (!/^(?:0\d{9}|380\d{9})$/.test(digits)) return 'Вкажіть український номер: +380 і 9 цифр або 0 і 9 цифр.';
+  let message = '';
+  if (field === nameInput && value.length < 2) message = 'Введіть ім’я — щонайменше 2 символи.';
+  if (field === phoneInput) {
+    const digits = value.replace(/\D/g, '');
+    const valid = /^[+\d\s().-]+$/.test(value) && (/^0\d{9}$/.test(digits) || /^380\d{9}$/.test(digits));
+    if (!valid) message = 'Введіть український номер: +380 та 9 цифр або 10 цифр з 0.';
   }
-  if (field.id === 'service' && !value) return 'Оберіть послугу або консультацію.';
-  return '';
-}
-
-function setFieldError(field, message) {
+  field.setAttribute('aria-invalid', String(Boolean(message)));
   document.querySelector(`#${field.id}-error`).textContent = message;
-  if (message) field.setAttribute('aria-invalid', 'true');
-  else field.removeAttribute('aria-invalid');
+  return !message;
 }
-
-function showErrors() {
-  errorSummary.replaceChildren();
-  const invalid = fields.filter(field => field.getAttribute('aria-invalid') === 'true');
-  errorSummary.hidden = invalid.length === 0;
-  if (!invalid.length) return;
-  const title = document.createElement('strong');
-  title.textContent = 'Перевірте, будь ласка, дані:';
-  errorSummary.append(title);
-  invalid.forEach(field => {
-    const link = document.createElement('a');
-    link.href = `#${field.id}`;
-    link.textContent = document.querySelector(`#${field.id}-error`).textContent;
-    link.addEventListener('click', event => { event.preventDefault(); field.focus(); });
-    errorSummary.append(link);
+[nameInput, phoneInput].forEach((field) => {
+  field.addEventListener('blur', () => { if (field.value.trim()) validateField(field); });
+  field.addEventListener('input', () => {
+    status.textContent = '';
+    if (field.getAttribute('aria-invalid') === 'true') validateField(field);
   });
-}
-
-fields.forEach(field => field.addEventListener('input', () => {
-  if (field.getAttribute('aria-invalid') !== 'true') return;
-  setFieldError(field, validate(field));
-  showErrors();
-}));
-
-form.addEventListener('submit', event => {
+});
+serviceSelect.addEventListener('change', () => { status.textContent = ''; });
+form.addEventListener('submit', (event) => {
   event.preventDefault();
-  fields.forEach(field => setFieldError(field, validate(field)));
-  showErrors();
-  if (!errorSummary.hidden) { errorSummary.focus(); return; }
-  const name = form.elements.name.value.trim();
-  const phone = form.elements.phone.value.trim();
-  const comment = form.elements.comment.value.trim();
-  draft.value = `Вітаю! Хочу записатися до FORMA Detailing.\nІм’я: ${name}\nТелефон: ${phone}\nПослуга: ${service.value}${comment ? `\nПро авто та побажання: ${comment}` : ''}\nПідкажіть, будь ласка, вільний час і вартість.`;
-  document.querySelector('#share-booking').href = `https://wa.me/?text=${encodeURIComponent(draft.value)}`;
-  copyStatus.textContent = '';
-  dialog.showModal();
-});
-
-document.querySelector('.dialog-close').addEventListener('click', () => dialog.close());
-dialog.addEventListener('click', event => {
-  const bounds = dialog.getBoundingClientRect();
-  if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
-});
-document.querySelector('#copy-booking').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(draft.value);
-    copyStatus.textContent = 'Текст заявки скопійовано. Надішліть його контакту студії.';
-  } catch {
-    draft.focus();
-    draft.select();
-    copyStatus.textContent = 'Браузер обмежив копіювання. Текст виділено — скопіюйте його вручну.';
+  const results = [nameInput, phoneInput].map(validateField);
+  if (results.includes(false)) {
+    status.textContent = 'Перевірте позначені поля. Заявку не надіслано.';
+    form.querySelector('[aria-invalid="true"]').focus();
+    return;
   }
+  status.textContent = 'Поля заповнено правильно. Це демонстраційна форма: заявку не надіслано, запис не створено. Для реальних заявок потрібно підключити сервіс запису.';
+  status.focus();
 });
 
+// Footer
 document.querySelector('#year').textContent = new Date().getFullYear();
+document.querySelectorAll('svg:not(.svg-library)').forEach((icon) => {
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+});
